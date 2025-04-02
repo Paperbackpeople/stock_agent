@@ -1,0 +1,84 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: Wangzhaoyu011023.
+      MYSQL_DATABASE: stock
+      MYSQL_USER: wangzhaoyu
+      MYSQL_PASSWORD: Wangzhaoyu011023.
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+    networks:
+      - my_network
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis_data:/data
+    networks:
+      - my_network
+
+  vector-service:
+    build: ./vector-service
+    container_name: vector-service
+    restart: always
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - mysql
+    environment:
+      - CHROMADB_PERSIST_DIRECTORY=/data
+    volumes:
+      - ./chroma:/data:rw
+    networks:
+      - my_network
+
+  springboot-app:
+    build: .
+    container_name: springboot-app
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mysql
+      - redis
+    environment:
+      - SERVER_PORT=8080
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+      - SPRING_DATASOURCE_USERNAME=wangzhaoyu
+      - SPRING_DATASOURCE_PASSWORD=Wangzhaoyu011023.
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - DIFY_GENERATE_URL=https://dify.lv3.ai/v1/workflows/run
+      - DIFY_GENERATE_API_KEY=app-YWjrVwGawm4PgjBZgsuci9ZU
+      - DIFY_VALIDATE_URL=https://api.dify.ai/v1/workflows/run
+      - DIFY_VALIDATE_API_KEY=app-T89Jb0YfT7Z5BLHVuN0Ob6gn
+      - VECTOR_SERVICE_BASE_URL=http://vector-service:8000
+    networks:
+      - my_network
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - springboot-app
+    networks:
+      - my_network
+
+networks:
+  my_network:
+    driver: bridge
