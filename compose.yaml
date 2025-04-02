@@ -57,8 +57,11 @@ services:
       - SPRING_DATASOURCE_PASSWORD=Wangzhaoyu011023.
       - SPRING_DATA_REDIS_HOST=redis
       - SPRING_DATA_REDIS_PORT=6379
-      - DIFY_GENERATE_URL=https://dify.lv3.ai/v1/workflows/run
-      - DIFY_GENERATE_API_KEY=app-YWjrVwGawm4PgjBZgsuci9ZU
+      # - DIFY_GENERATE_URL=https://dify.lv3.ai/v1/workflows/run
+      # - DIFY_GENERATE_API_KEY=app-YWjrVwGawm4PgjBZgsuci9ZU
+      - DIFY_GENERATE_URL=https://api.dify.ai/v1/workflows/run
+      - DIFY_GENERATE_API_KEY=app-4wtf7r3Xky2WoZuQUd16piQg
+
       - DIFY_VALIDATE_URL=https://api.dify.ai/v1/workflows/run
       - DIFY_VALIDATE_API_KEY=app-T89Jb0YfT7Z5BLHVuN0Ob6gn
       - VECTOR_SERVICE_BASE_URL=http://vector-service:8000
@@ -74,11 +77,21 @@ services:
       - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx_certbot/conf:/etc/letsencrypt
+      - ./nginx_certbot/www:/var/www/certbot
     depends_on:
       - springboot-app
     networks:
       - my_network
-
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - ./nginx_certbot/conf:/etc/letsencrypt
+      - ./nginx_certbot/www:/var/www/certbot
+    entrypoint: /bin/sh -c "sleep 30 && certbot certonly --webroot --webroot-path=/var/www/certbot --email 1241077523@qq.com --agree-tos --no-eff-email -d www.wangzhaoyu.online"
+    depends_on:
+      - nginx
 networks:
   my_network:
     driver: bridge

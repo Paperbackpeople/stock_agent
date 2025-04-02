@@ -112,38 +112,41 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         log.info("Querying report text from vector service for company: {}", companyName);
         QueryResult reportResult = vectorQueryService.queryReport(companyName, 2);
         StringBuilder reportTextBuilder = new StringBuilder();
+
         if (reportResult != null && reportResult.getResults() != null && !reportResult.getResults().isEmpty()) {
             for (QueryResult.Result item : reportResult.getResults()) {
-                // Append the year and document from each result
                 reportTextBuilder.append(item.getYear())
                         .append(": ")
                         .append(item.getDocument())
                         .append("\n");
             }
         } else {
-            log.error("No report result found for company: {}", companyName);
-            throw new RuntimeException("No report result found");
+            log.warn("No report result found for company: {}. Using empty report text.", companyName);
         }
-        String reportText = reportTextBuilder.toString();
-        log.info("Obtained report text (truncated): {}", reportText.substring(0, Math.min(100, reportText.length())));
+
+        String reportText = reportTextBuilder.toString().trim();  // 即使为空也可以传下去
+        log.info("Obtained report text (truncated): {}",
+                reportText.length() > 0 ? reportText.substring(0, Math.min(100, reportText.length())) : "[EMPTY]");
 
         log.info("Querying call transcript from vector service for company: {}", companyName);
         QueryResult callTranscriptResult = vectorQueryService.queryCallTranscripts(companyName, 2);
         StringBuilder callTranscriptBuilder = new StringBuilder();
+
         if (callTranscriptResult != null && callTranscriptResult.getResults() != null && !callTranscriptResult.getResults().isEmpty()) {
             for (QueryResult.Result item : callTranscriptResult.getResults()) {
-                // Append the year and document from each result
                 callTranscriptBuilder.append(item.getYear())
                         .append(": ")
                         .append(item.getDocument())
                         .append("\n");
             }
         } else {
-            log.error("No call transcript result found for company: {}", companyName);
-            throw new RuntimeException("No call transcript result found");
+            log.warn("No call transcript result found for company: {}. Using empty call transcript.", companyName);
         }
-        String callTranscript = callTranscriptBuilder.toString();
-        log.info("Obtained call transcript text (truncated): {}", callTranscript.substring(0, Math.min(100, callTranscript.length())));
+
+        String callTranscript = callTranscriptBuilder.toString().trim();  // 即使为空也OK
+        log.info("Obtained call transcript text (truncated): {}",
+                callTranscript.length() > 0 ? callTranscript.substring(0, Math.min(100, callTranscript.length())) : "[EMPTY]");
+
         // Build the request body for the Dify API with streaming response mode.
         Map<String, Object> inputs = new HashMap<>();
         inputs.put("stock_history_info", stockHistoryInfo);
