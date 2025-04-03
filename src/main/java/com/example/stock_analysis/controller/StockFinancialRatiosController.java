@@ -16,10 +16,7 @@ public class StockFinancialRatiosController {
     @Autowired
     private ICompanyFinancialRatiosService financialRatiosService;
 
-    /**
-     * 根据公司名称查询所有财务数据
-     * 例如请求: GET /api/financial-ratios?companyName=American Airlines Group Inc
-     */
+
     @GetMapping
     public ResponseEntity<?> getFinancialRatiosByCompany(@RequestParam("companyName") String companyName) {
         List<CompanyFinancialRatios> list = financialRatiosService.lambdaQuery()

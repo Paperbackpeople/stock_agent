@@ -16,10 +16,7 @@ public class StockHistoryController {
     @Autowired
     private IStockHistoryService stockHistoryService;
 
-    /**
-     * 根据公司名称（ticker）查询所有历史记录，并返回带表头和数据的结果
-     * 示例请求: GET /api/stock-history?companyName=AMZN
-     */
+
     @GetMapping
     public ResponseEntity<?> getStockHistoryByCompany(@RequestParam("companyName") String companyName) {
         List<StockHistory> records = stockHistoryService.lambdaQuery()

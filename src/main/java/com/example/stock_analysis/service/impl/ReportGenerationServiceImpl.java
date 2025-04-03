@@ -124,7 +124,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
             log.warn("No report result found for company: {}. Using empty report text.", companyName);
         }
 
-        String reportText = reportTextBuilder.toString().trim();  // 即使为空也可以传下去
+        String reportText = reportTextBuilder.toString().trim(); 
         log.info("Obtained report text (truncated): {}",
                 reportText.length() > 0 ? reportText.substring(0, Math.min(100, reportText.length())) : "[EMPTY]");
 
@@ -143,7 +143,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
             log.warn("No call transcript result found for company: {}. Using empty call transcript.", companyName);
         }
 
-        String callTranscript = callTranscriptBuilder.toString().trim();  // 即使为空也OK
+        String callTranscript = callTranscriptBuilder.toString().trim(); 
         log.info("Obtained call transcript text (truncated): {}",
                 callTranscript.length() > 0 ? callTranscript.substring(0, Math.min(100, callTranscript.length())) : "[EMPTY]");
 
@@ -172,15 +172,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                 .accept(MediaType.TEXT_EVENT_STREAM)
                 .retrieve()
                 .bodyToFlux(String.class)
-                // 记录订阅开始
                 .doOnSubscribe(subscription -> log.info("Subscription started for streaming request"))
-                // 记录每个接收到的原始事件
                 .doOnNext(event -> log.debug("Received raw event: {}", event))
-                // 记录错误
                 .doOnError(e -> log.error("Error during streaming", e))
-                // 记录流完成
                 .doOnComplete(() -> log.info("Streaming complete"))
-                // 过滤出包含 workflow_finished 的事件，并记录过滤后的事件
                 .filter(event -> {
                     boolean contains = event.contains("\"event\": \"workflow_finished\"");
                     if (contains) {
@@ -190,14 +185,12 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                     }
                     return contains;
                 })
-                // 提取 output 字段，并记录提取结果
                 .map(event -> {
                     String output = extractOutput(event);
                     log.info("Output field extracted: {}", output);
                     try {
                         ObjectMapper mapper = new ObjectMapper();
                         JsonNode outputJson = mapper.readTree(output);
-                        // 直接获取 "report" 字段
                         String reportFragment = outputJson.path("report").toString();
                         log.info("Report fragment extracted: {}", reportFragment);
                         return reportFragment;
@@ -206,26 +199,20 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                         return "";
                     }
                 })
-                // 收集所有 report fragments，并记录收集的列表
                 .collectList()
                 .doOnNext(list -> log.info("Collected list of report fragments: {}", list))
-                // 合并 fragments 并记录最终报告内容
                 .map(messages -> {
                     String validReport = String.join("", messages);
                     log.info("Final report content: {}", validReport);
-                    // 验证报告格式
                     if (!validateGeneratedReport(userId, validReport)) {
                         log.error("Validation failed for report: {}", validReport);
                         throw new RuntimeException("Report validation failed");
                     }
                     log.info("Report validation passed");
-                    // 保存报告到数据库
                     saveReportToDB(userId, companyName, reportId, validReport);
                     log.info("Report saved to the database with reportId: {}", reportId);
-                    // 设置 Redis key 防止重复生成
                     redisTemplate.opsForValue().set(redisKey, true, 3600, TimeUnit.SECONDS);
                     log.info("Set Redis key {} with a TTL of 3600 seconds", redisKey);
-                    // 构建返回结果
                     ReportGenerationResponse response = new ReportGenerationResponse();
                     response.setReportId(reportId);
                     response.setReportContent(validReport);
