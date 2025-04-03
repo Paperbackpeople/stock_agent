@@ -27,7 +27,7 @@ public class VectorQueryServiceImpl implements VectorQueryService {
     private RestTemplate restTemplate;
 
     @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
+    private RedisTemplate redisTemplate;
 
     @Override
     public QueryResult queryReport(String queryText, int nResults) {
@@ -38,14 +38,12 @@ public class VectorQueryServiceImpl implements VectorQueryService {
         }
 
         String url = vectorServiceBaseUrl + "/query/stock_data?company_name=" + queryText + "&n_results=" + nResults;
-        Map<String, Object> externalResult = restTemplate.getForObject(url, Map.class);
-        // 注意这里返回的 key 是 "research_reports_results"
-        Map<String, Object> researchReports = (Map<String, Object>) externalResult.get("research_reports_results");
+        Map externalResult = restTemplate.getForObject(url, Map.class);
+        Map researchReports = (Map) externalResult.get("research_reports_results");
 
         QueryResult result = new QueryResult();
         result.setMessage((String) researchReports.get("message"));
 
-        // 防御性处理 max_year 和 year_cutoff
         Object maxYearObj = researchReports.get("max_year");
         if (maxYearObj instanceof Number) {
             result.setMaxYear(((Number) maxYearObj).intValue());
@@ -60,32 +58,32 @@ public class VectorQueryServiceImpl implements VectorQueryService {
             result.setYearCutoff(2019);
         }
 
-        List<Map<String, Object>> resultList = (List<Map<String, Object>>) researchReports.get("results");
+        List<Map> resultList = (List<Map>) researchReports.get("results");
         List<QueryResult.Result> results = new ArrayList<>();
-        for (Map<String, Object> m : resultList) {
-            // 如果 metadata 中缺少 year 字段，则跳过这条记录
-            Object yearObj = m.get("year");
-            if (!(yearObj instanceof Number)) {
-                continue;
-            }
-            int yearValue = ((Number) yearObj).intValue();
+        if (resultList != null) {
+            for (Map m : resultList) {
+                Object yearObj = m.get("year");
+                if (!(yearObj instanceof Number)) {
+                    continue;
+                }
+                int yearValue = ((Number) yearObj).intValue();
 
-            // 对 distance 字段做防御性处理，如果为空则可以设置一个默认较大值或跳过记录
-            Object distanceObj = m.get("distance");
-            double distanceValue;
-            if (distanceObj instanceof Number) {
-                distanceValue = ((Number) distanceObj).doubleValue();
-            } else {
-                continue;
-            }
+                Object distanceObj = m.get("distance");
+                double distanceValue;
+                if (distanceObj instanceof Number) {
+                    distanceValue = ((Number) distanceObj).doubleValue();
+                } else {
+                    continue;
+                }
 
-            QueryResult.Result r = new QueryResult.Result();
-            r.setId((String) m.get("id"));
-            r.setDocument((String) m.get("document"));
-            r.setMetadata((Map<String, Object>) m.get("metadata"));
-            r.setDistance(distanceValue);
-            r.setYear(yearValue);
-            results.add(r);
+                QueryResult.Result r = new QueryResult.Result();
+                r.setId((String) m.get("id"));
+                r.setDocument((String) m.get("document"));
+                r.setMetadata((Map) m.get("metadata"));
+                r.setDistance(distanceValue);
+                r.setYear(yearValue);
+                results.add(r);
+            }
         }
         result.setResults(results);
 
@@ -102,38 +100,48 @@ public class VectorQueryServiceImpl implements VectorQueryService {
         }
 
         String url = vectorServiceBaseUrl + "/query/stock_data?company_name=" + queryText + "&n_results=" + nResults;
-        Map<String, Object> externalResult = restTemplate.getForObject(url, Map.class);
-        Map<String, Object> callTranscripts = (Map<String, Object>) externalResult.get("call_transcripts_results");
+        Map externalResult = restTemplate.getForObject(url, Map.class);
+        Map callTranscripts = (Map) externalResult.get("call_transcripts_results");
 
         QueryResult result = new QueryResult();
         result.setMessage((String) callTranscripts.get("message"));
 
         Object maxYearObj = callTranscripts.get("max_year");
-        result.setMaxYear(maxYearObj instanceof Integer ? (Integer) maxYearObj : null);
+        if (maxYearObj instanceof Number) {
+            result.setMaxYear(((Number) maxYearObj).intValue());
+        } else {
+            result.setMaxYear(2019); 
+        }
 
         Object yearCutoffObj = callTranscripts.get("year_cutoff");
-        result.setYearCutoff(yearCutoffObj instanceof Integer ? (Integer) yearCutoffObj : null);
+        if (yearCutoffObj instanceof Number) {
+            result.setYearCutoff(((Number) yearCutoffObj).intValue());
+        } else {
+            result.setYearCutoff(2019); 
+        }
 
-        List<Map<String, Object>> resultList = (List<Map<String, Object>>) callTranscripts.get("results");
+        List<Map> resultList = (List<Map>) callTranscripts.get("results");
         if (resultList == null) {
             resultList = Collections.emptyList();
         }
 
         List<QueryResult.Result> results = new ArrayList<>();
-        for (Map<String, Object> m : resultList) {
+        for (Map m : resultList) {
             try {
                 QueryResult.Result r = new QueryResult.Result();
                 r.setId((String) m.get("id"));
                 r.setDocument((String) m.get("document"));
-                r.setMetadata((Map<String, Object>) m.get("metadata"));
+                r.setMetadata((Map) m.get("metadata"));
 
-                // distance 防御
                 Object distObj = m.get("distance");
                 r.setDistance(distObj instanceof Number ? ((Number) distObj).doubleValue() : 0.0);
 
-                // year 防御
                 Object yearObj = m.get("year");
-                r.setYear(yearObj instanceof Number ? ((Number) yearObj).intValue() : null);
+                if (yearObj instanceof Number) {
+                    r.setYear(((Number) yearObj).intValue());
+                } else {
+                    r.setYear(0);
+                }
 
                 results.add(r);
             } catch (Exception e) {

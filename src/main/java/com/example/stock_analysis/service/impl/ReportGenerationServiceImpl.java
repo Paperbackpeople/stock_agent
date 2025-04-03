@@ -163,62 +163,76 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         log.debug("Dify request body: {}", difyRequestBody);
 
         log.info("Sending streaming request to Dify API at URL: {}", difyGenerateUrl);
-        CompletableFuture<ReportGenerationResponse> futureResponse =
-                webClient.post()
-                        .uri(difyGenerateUrl)
-                        .header("Authorization", "Bearer " + difyGenerateApiKey)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .bodyValue(difyRequestBody)
-                        .accept(MediaType.TEXT_EVENT_STREAM)
-                        .retrieve()
-                        .bodyToFlux(String.class)
-                        // Log each raw event received
-                        .doOnNext(event -> log.debug("Received raw event: {}", event))
-                        // Filter for the event that indicates the workflow has finished
-                        .filter(event -> event.contains("\"event\": \"workflow_finished\""))
-                        // Instead of extracting report via extractReportContent, extract the output field directly
-                        .map(event -> {
-                            String output = extractOutput(event);
-                            log.info("Output field: {}", output);
-                            try {
-                                ObjectMapper mapper = new ObjectMapper();
-                                JsonNode outputJson = mapper.readTree(output);
-                                // Directly get the "report" field from output JSON
-                                return outputJson.path("report").toString();
-                            } catch (Exception e) {
-                                log.error("Failed to extract report from output: {}", output, e);
-                                return "";
-                            }
-                        })
-                        .collectList()
-                        .map(messages -> {
-                            // Merge all report fragments into a single string (assuming one valid report)
-                            String validReport = String.join("", messages);
-                            log.info("Final report content: {}", validReport);
-
-                            // Validate the report using the structured JSON format
-                            if (!validateGeneratedReport(userId, validReport)) {
-                                log.error("Validation failed for report: {}", validReport);
-                                throw new RuntimeException("Report validation failed");
-                            }
-                            log.info("Report validation passed");
-
-                            // Save the original report in the database
-                            saveReportToDB(userId, companyName, reportId, validReport);
-                            log.info("Report saved to the database with reportId: {}", reportId);
-
-                            // Set a Redis key to prevent generating a duplicate report within one hour
-                            redisTemplate.opsForValue().set(redisKey, true, 3600, TimeUnit.SECONDS);
-                            log.info("Set Redis key {} with a TTL of 3600 seconds", redisKey);
-
-                            // Build the response object
-                            ReportGenerationResponse response = new ReportGenerationResponse();
-                            response.setReportId(reportId);
-                            response.setReportContent(validReport);
-                            log.info("Report generation completed successfully for reportId: {}", reportId);
-                            return response;
-                        })
-                        .toFuture();
+       CompletableFuture<ReportGenerationResponse> futureResponse =
+        webClient.post()
+                .uri(difyGenerateUrl)
+                .header("Authorization", "Bearer " + difyGenerateApiKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(difyRequestBody)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .retrieve()
+                .bodyToFlux(String.class)
+                // 记录订阅开始
+                .doOnSubscribe(subscription -> log.info("Subscription started for streaming request"))
+                // 记录每个接收到的原始事件
+                .doOnNext(event -> log.debug("Received raw event: {}", event))
+                // 记录错误
+                .doOnError(e -> log.error("Error during streaming", e))
+                // 记录流完成
+                .doOnComplete(() -> log.info("Streaming complete"))
+                // 过滤出包含 workflow_finished 的事件，并记录过滤后的事件
+                .filter(event -> {
+                    boolean contains = event.contains("\"event\": \"workflow_finished\"");
+                    if (contains) {
+                        log.info("Filtered event (workflow_finished detected): {}", event);
+                    } else {
+                        log.debug("Event does not match filter: {}", event);
+                    }
+                    return contains;
+                })
+                // 提取 output 字段，并记录提取结果
+                .map(event -> {
+                    String output = extractOutput(event);
+                    log.info("Output field extracted: {}", output);
+                    try {
+                        ObjectMapper mapper = new ObjectMapper();
+                        JsonNode outputJson = mapper.readTree(output);
+                        // 直接获取 "report" 字段
+                        String reportFragment = outputJson.path("report").toString();
+                        log.info("Report fragment extracted: {}", reportFragment);
+                        return reportFragment;
+                    } catch (Exception e) {
+                        log.error("Failed to extract report from output: {}", output, e);
+                        return "";
+                    }
+                })
+                // 收集所有 report fragments，并记录收集的列表
+                .collectList()
+                .doOnNext(list -> log.info("Collected list of report fragments: {}", list))
+                // 合并 fragments 并记录最终报告内容
+                .map(messages -> {
+                    String validReport = String.join("", messages);
+                    log.info("Final report content: {}", validReport);
+                    // 验证报告格式
+                    if (!validateGeneratedReport(userId, validReport)) {
+                        log.error("Validation failed for report: {}", validReport);
+                        throw new RuntimeException("Report validation failed");
+                    }
+                    log.info("Report validation passed");
+                    // 保存报告到数据库
+                    saveReportToDB(userId, companyName, reportId, validReport);
+                    log.info("Report saved to the database with reportId: {}", reportId);
+                    // 设置 Redis key 防止重复生成
+                    redisTemplate.opsForValue().set(redisKey, true, 3600, TimeUnit.SECONDS);
+                    log.info("Set Redis key {} with a TTL of 3600 seconds", redisKey);
+                    // 构建返回结果
+                    ReportGenerationResponse response = new ReportGenerationResponse();
+                    response.setReportId(reportId);
+                    response.setReportContent(validReport);
+                    log.info("Report generation completed successfully for reportId: {}", reportId);
+                    return response;
+                })
+                .toFuture();
 
         return futureResponse;
     }
